@@ -35,9 +35,9 @@ mcp = FastMCP()
 attach_injector(mcp, injector)
 
 
-# Use Injected[T] to declare dependencies — they won't appear in the tool schema
+# Use Injected(T) to declare dependencies — they won't appear in the tool schema
 @mcp.tool()
-def ask_database(question: str, db: Injected[Database]) -> str:
+def ask_database(question: str, db: Database = Injected(Database)) -> str:
     return db.query(question)
 
 
@@ -45,12 +45,12 @@ if __name__ == "__main__":
     mcp.run()
 ```
 
-`Injected[T]` parameters are resolved automatically from the injector container at call time. Only regular parameters (like `question: str`) are exposed in the MCP tool schema.
+`Injected(T)` parameters are resolved automatically from the injector container at call time. Only regular parameters (like `question: str`) are exposed in the MCP tool schema. The type annotation (e.g. `db: Database`) gives your IDE full autocomplete and type checking.
 
 ## How it works
 
 1. `attach_injector(mcp, injector)` patches `mcp.tool()` to intercept tool registration.
-2. Parameters annotated with `Injected[T]` are stripped from the function signature before FastMCP generates the tool schema.
+2. Parameters with an `Injected(T)` default value are stripped from the function signature before FastMCP generates the tool schema.
 3. At invocation time, a wrapper resolves those dependencies via `injector.get(T)` and injects them into the original function.
 
 ## License

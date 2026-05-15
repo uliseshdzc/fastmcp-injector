@@ -1,43 +1,40 @@
 import inspect
 from functools import wraps
-from typing import Annotated, get_args, get_origin, get_type_hints
+from typing import Type, TypeVar
 
 from fastmcp import FastMCP
 from injector import Injector
 
-
-class _Dependency:
-    pass
+T = TypeVar("T")
 
 
-class Injected:
-    """Type annotation for injected dependencies. Usage: param: Injected[MyService]"""
+class _InjectedMarker:
+    def __init__(self, interface: type):
+        self.interface = interface
 
-    def __class_getitem__(cls, item):
-        return Annotated[item, _Dependency()]
+
+def Injected(interface: Type[T]) -> T:  # pylint: disable=invalid-name
+    """Marks a parameter for dependency injection. Usage: param: Database = Injected(Database)"""
+    return _InjectedMarker(interface)
 
 
 def attach_injector(mcp: FastMCP, injector: Injector):
-    """Patches mcp.tool() to auto-resolve Injected[T] parameters from the injector."""
+    """Patches mcp.tool() to auto-resolve Injected(T) parameters from the injector."""
     original_tool = mcp.tool
 
     def patched_tool(*args, **kwargs):
         original_decorator = original_tool(*args, **kwargs)
 
         def decorator(func):
-            hints = get_type_hints(func, include_extras=True)
             sig = inspect.signature(func)
 
             injected_params = {}
             tool_params = []
 
             for name, param in sig.parameters.items():
-                hint = hints.get(name)
-                if hint and get_origin(hint) is Annotated:
-                    metadata = get_args(hint)
-                    if any(isinstance(m, _Dependency) for m in metadata):
-                        injected_params[name] = metadata[0]
-                        continue
+                if isinstance(param.default, _InjectedMarker):
+                    injected_params[name] = param.default.interface
+                    continue
                 tool_params.append(param)
 
             if inspect.iscoroutinefunction(func):
@@ -57,11 +54,14 @@ def attach_injector(mcp: FastMCP, injector: Injector):
                     return func(**kw)
 
             wrapper.__signature__ = sig.replace(parameters=tool_params)
+            annotations = getattr(func, "__annotations__", {})
             wrapper.__annotations__ = {
-                p.name: hints[p.name] for p in tool_params if p.name in hints
+                p.name: annotations[p.name]
+                for p in tool_params
+                if p.name in annotations
             }
-            if "return" in hints:
-                wrapper.__annotations__["return"] = hints["return"]
+            if "return" in annotations:
+                wrapper.__annotations__["return"] = annotations["return"]
 
             return original_decorator(wrapper)
 
