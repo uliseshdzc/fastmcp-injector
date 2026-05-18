@@ -41,6 +41,7 @@ Repository = "https://github.com/uliseshdzc/fastmcp-injector"
 
 [tool.setuptools.packages.find]
 where = ["."]
+exclude = ["tests*"]
 
 [tool.ruff]
 target-version = "py310"
