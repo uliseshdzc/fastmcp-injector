@@ -31,57 +31,50 @@ def mcp(injector):
     return server
 
 
-def test_injected_param_not_in_schema(mcp):
+async def test_injected_param_not_in_schema(mcp):
     @mcp.tool()
-    def my_tool(question: str, svc: Injected[FakeService]) -> str:
+    def my_tool(question: str, svc: FakeService = Injected(FakeService)) -> str:
         return svc.greet(question)
 
-    tools = mcp._tool_manager._tools
-    tool = tools["my_tool"]
-    params = tool.fn_metadata.arg_model.model_fields
-    assert "question" in params
-    assert "svc" not in params
+    tool = await mcp.get_tool("my_tool")
+    assert "question" in tool.parameters["properties"]
+    assert "svc" not in tool.parameters["properties"]
 
 
-def test_tool_resolves_dependency(mcp):
+async def test_tool_resolves_dependency(mcp):
     @mcp.tool()
-    def my_tool(name: str, svc: Injected[FakeService]) -> str:
+    def my_tool(name: str, svc: FakeService = Injected(FakeService)) -> str:
         return svc.greet(name)
 
-    tool = mcp._tool_manager._tools["my_tool"]
-    result = tool.fn(name="World")
-    assert result == "Hello, World!"
+    result = await mcp.call_tool("my_tool", {"name": "World"})
+    assert result.content[0].text == "Hello, World!"
 
 
-def test_tool_resolves_nested_dependency(mcp):
+async def test_tool_resolves_nested_dependency(mcp):
     @mcp.tool()
-    def my_tool(value: str, svc: Injected[ServiceWithDep]) -> str:
+    def my_tool(value: str, svc: ServiceWithDep = Injected(ServiceWithDep)) -> str:
         return svc.process(value)
 
-    tool = mcp._tool_manager._tools["my_tool"]
-    result = tool.fn(value="Alice")
-    assert result == "Hello, Alice!"
+    result = await mcp.call_tool("my_tool", {"value": "Alice"})
+    assert result.content[0].text == "Hello, Alice!"
 
 
-@pytest.mark.asyncio
 async def test_async_tool(mcp):
     @mcp.tool()
-    async def my_async_tool(name: str, svc: Injected[FakeService]) -> str:
+    async def my_async_tool(name: str, svc: FakeService = Injected(FakeService)) -> str:
         return svc.greet(name)
 
-    tool = mcp._tool_manager._tools["my_async_tool"]
-    result = await tool.fn(name="Async")
-    assert result == "Hello, Async!"
+    result = await mcp.call_tool("my_async_tool", {"name": "Async"})
+    assert result.content[0].text == "Hello, Async!"
 
 
-def test_tool_without_injected_params(mcp):
+async def test_tool_without_injected_params(mcp):
     @mcp.tool()
     def plain_tool(x: int, y: int) -> int:
         return x + y
 
-    tool = mcp._tool_manager._tools["plain_tool"]
-    params = tool.fn_metadata.arg_model.model_fields
-    assert "x" in params
-    assert "y" in params
-    result = tool.fn(x=2, y=3)
-    assert result == 5
+    tool = await mcp.get_tool("plain_tool")
+    assert "x" in tool.parameters["properties"]
+    assert "y" in tool.parameters["properties"]
+    result = await mcp.call_tool("plain_tool", {"x": 2, "y": 3})
+    assert result.content[0].text == "5"
